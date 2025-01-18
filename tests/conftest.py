@@ -4,65 +4,82 @@ import pytest
 import uuid
 import os
 from datetime import datetime
+import json
 
 from src.llm_client import LLMClient
 from src.database import get_session, ModelRegistry, UnitTestSuite
 from src.config import settings
-from src.test_aggregator import TestResultAggregator
 
-# Test Result Aggregation Setup
+# Global variable to store test results
+class TestResults:
+    def __init__(self):
+        self.results = []
+        self.current_test = None
+
+test_results = TestResults()
+
 def pytest_configure(config):
-    """Register the test result aggregator at the start of test session."""
-    db_url = os.getenv("DATABASE_URL", "sqlite:///database/llm_evaluation.db")
-    aggregator = TestResultAggregator(db_url)
-    config.pluginmanager.register(aggregator, "result_aggregator")
+    """Initial test session configuration."""
+    test_results.results = []
 
 def pytest_runtest_logreport(report):
-    """Record test results as they complete."""
-    if report.when == "call":
-        aggregator = pytest.config.pluginmanager.get_plugin("result_aggregator")
-        
+    """Process individual test results."""
+    if report.when == "call":  # Only process the test result after it's done
         # Determine test outcome
         outcome = "passed" if report.passed else "failed"
         if hasattr(report, "wasxfail"):
             outcome = "partial"
             
-        # Capture error details if test failed
-        error_message = None
-        if report.failed:
-            error_message = str(report.longrepr)
-            
-        # Add metrics if available in report
-        metrics = getattr(report, "test_metrics", {})
+        # Create result entry
+        result = {
+            "test_name": report.nodeid,
+            "outcome": outcome,
+            "error_message": str(report.longrepr) if report.failed else None,
+            "duration": report.duration,
+            "timestamp": datetime.utcnow().isoformat()
+        }
         
-        aggregator.add_result(
-            test_name=report.nodeid,
-            outcome=outcome,
-            error_message=error_message,
-            metrics=metrics
-        )
+        test_results.results.append(result)
 
-def pytest_sessionfinish(session):
+def pytest_sessionfinish(session, exitstatus):
     """Process final results at end of test session."""
-    aggregator = session.config.pluginmanager.get_plugin("result_aggregator")
-    model_name = os.getenv("MODEL_NAME", "unknown_model")
-    metrics, status = aggregator.save_to_database(model_name)
+    # Calculate metrics
+    total_tests = len(test_results.results)
+    if total_tests > 0:
+        successful = sum(1 for r in test_results.results if r["outcome"] == "passed")
+        partial = sum(1 for r in test_results.results if r["outcome"] == "partial")
+        attempted = sum(1 for r in test_results.results if r["outcome"] != "skipped")
+        
+        metrics = {
+            "coverage_rate": (attempted / total_tests) * 100,
+            "success_rate": (successful / total_tests) * 100,
+            "partial_success_rate": (partial / total_tests) * 100
+        }
+        
+        # Determine overall status
+        if metrics["coverage_rate"] >= 80:
+            status = "success"
+        elif metrics["coverage_rate"] >= 50:
+            status = "partial"
+        else:
+            status = "insufficient_coverage"
 
-# Environment Fixtures
-@pytest.fixture(scope="session")
-def model_name():
-    """Get the model name from environment."""
-    return os.getenv("MODEL_NAME", "unknown_model")
+        # Save metrics to file
+        model_name = os.getenv("MODEL_NAME", "unknown_model")
+        output = {
+            "metrics": metrics,
+            "status": status,
+            "model_name": model_name,
+            "timestamp": datetime.utcnow().isoformat(),
+            "results": test_results.results
+        }
 
-@pytest.fixture(scope="session")
-def api_key():
-    """Get the API key from environment."""
-    return os.getenv("API_KEY")
+        with open("test_metrics.json", "w") as f:
+            json.dump(output, f, indent=2)
 
-@pytest.fixture(scope="session")
-def api_base_url():
-    """Get the API base URL from environment."""
-    return os.getenv("API_BASE_URL")
+        # Log metrics for visibility
+        print(f"Metrics for {model_name}: {json.dumps(metrics, indent=2)}")
+        print(f"Run status: {status}")
 
 # Database Fixtures
 @pytest.fixture(scope="session")
@@ -72,12 +89,6 @@ def db_session():
     yield session
     session.close()
 
-@pytest.fixture(scope="session")
-def db_url():
-    """Get database URL from environment."""
-    return os.getenv("DATABASE_URL", "sqlite:///database/llm_evaluation.db")
-
-# LLM Client Fixtures
 @pytest.fixture
 async def llm_client():
     """Create an LLM client instance."""
@@ -101,7 +112,6 @@ async def test_model(db_session):
     db_session.commit()
     return model
 
-# Test Suite Fixtures
 @pytest.fixture
 def make_test_suite(db_session):
     """Factory fixture for creating uniquely named test suites."""
@@ -127,7 +137,6 @@ def make_test_suite(db_session):
         db_session.delete(suite)
     db_session.commit()
 
-# Content Fixtures
 @pytest.fixture
 def sample_texts():
     """Provide sample texts for testing."""
@@ -159,7 +168,6 @@ def test_prompts():
         "compare": "Please compare and contrast the following two texts:"
     }
 
-# Cleanup Fixtures
 @pytest.fixture(autouse=True)
 async def cleanup_db(db_session):
     """Clean up the database after tests."""

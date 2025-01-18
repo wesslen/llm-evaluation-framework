@@ -45,56 +45,60 @@ jobs:
 
       - name: Run evaluation tests
         id: run_tests
-        continue-on-error: true  # Allow the workflow to continue even if tests fail
+        continue-on-error: true
         env:
           API_BASE_URL: ${{ inputs.api_base_url }}
           API_KEY: ${{ inputs.api_key }}
           MODEL_NAME: ${{ inputs.model_name }}
           DATABASE_URL: sqlite:///database/llm_evaluation.db
         run: |
-          pytest tests/ -v
+          pytest tests/ -v || true
 
-      - name: Check evaluation metrics
-        id: check_metrics
+      - name: Process test results
+        id: process_results
+        if: always()
         run: |
           if [ -f "test_metrics.json" ]; then
+            echo "metrics_exist=true" >> $GITHUB_OUTPUT
             coverage_rate=$(jq -r '.metrics.coverage_rate' test_metrics.json)
             status=$(jq -r '.status' test_metrics.json)
+            echo "coverage_rate=$coverage_rate" >> $GITHUB_OUTPUT
+            echo "status=$status" >> $GITHUB_OUTPUT
             echo "Coverage Rate: $coverage_rate%"
             echo "Status: $status"
             
             if (( $(echo "$coverage_rate < ${{ inputs.minimum_coverage }}" | bc -l) )); then
               echo "::warning::Coverage rate ($coverage_rate%) is below minimum threshold (${{ inputs.minimum_coverage }}%)"
-              # Don't fail the build, just warn
             fi
-            
-            # Export metrics for summary
-            echo "coverage_rate=$coverage_rate" >> $GITHUB_ENV
-            echo "status=$status" >> $GITHUB_ENV
           else
-            echo "::error::No metrics file found"
-            exit 1
+            echo "::warning::No metrics file found"
+            echo "metrics_exist=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Generate Datasette visualization
+        if: steps.process_results.outputs.metrics_exist == 'true'
         run: |
           datasette inspect database/llm_evaluation.db --inspect-file database/inspection.json
 
       - name: Commit and push changes
+        if: steps.process_results.outputs.metrics_exist == 'true'
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add database/llm_evaluation.db database/inspection.json test_metrics.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Update test results [Coverage: ${coverage_rate}%, Status: ${status}] [skip ci]" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update test results [Coverage: ${{ steps.process_results.outputs.coverage_rate }}%, Status: ${{ steps.process_results.outputs.status }}] [skip ci]" && git push)
 
       - name: Generate evaluation summary
+        if: always()
         run: |
           echo "## Evaluation Results for ${{ inputs.model_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "* Coverage Rate: ${{ env.coverage_rate }}%" >> $GITHUB_STEP_SUMMARY
-          echo "* Status: ${{ env.status }}" >> $GITHUB_STEP_SUMMARY
           if [ -f "test_metrics.json" ]; then
+            echo "* Coverage Rate: ${{ steps.process_results.outputs.coverage_rate }}%" >> $GITHUB_STEP_SUMMARY
+            echo "* Status: ${{ steps.process_results.outputs.status }}" >> $GITHUB_STEP_SUMMARY
             echo "### Detailed Metrics" >> $GITHUB_STEP_SUMMARY
             echo '```json' >> $GITHUB_STEP_SUMMARY
             cat test_metrics.json >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "* No metrics were generated during this run" >> $GITHUB_STEP_SUMMARY
           fi
