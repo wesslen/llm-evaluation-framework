@@ -1,0 +1,59 @@
+name: LLM Evaluation Tests
+on: 
+  workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: 'API Base URL'
+        required: true
+      api_key:
+        description: 'API Key'
+        required: true
+        type: secret
+      model_name:
+        description: 'Model Name'
+        required: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Full history for better commit messages
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Initialize database if not exists
+        run: |
+          if [ ! -f "database/llm_evaluation.db" ]; then
+            python database/init_db.py
+          fi
+
+      - name: Run tests
+        env:
+          API_BASE_URL: ${{ inputs.api_base_url }}
+          API_KEY: ${{ inputs.api_key }}
+          MODEL_NAME: ${{ inputs.model_name }}
+          DATABASE_URL: sqlite:///database/llm_evaluation.db
+        run: |
+          pytest tests/ -v
+
+      - name: Generate Datasette visualization
+        run: |
+          datasette inspect database/llm_evaluation.db --inspect-file database/inspection.json
+          
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add database/llm_evaluation.db database/inspection.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update test results database and inspection data [skip ci]" && git push)

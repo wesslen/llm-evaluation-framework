@@ -1,0 +1,8 @@
+databases:
+  llm_evaluation:
+    source: database/llm_evaluation.db
+    title: LLM Evaluation Results
+    description: Unit test results for LLM evaluation framework
+plugins:
+  datasette-json-html:
+    enabled: true
