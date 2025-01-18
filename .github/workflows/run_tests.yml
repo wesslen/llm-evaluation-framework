@@ -12,15 +12,20 @@ on:
       model_name:
         description: 'Model Name'
         required: true
+      minimum_coverage:
+        description: 'Minimum required coverage rate (%)'
+        required: false
+        default: '50'
+        type: number
 
 jobs:
-  test:
+  evaluate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Full history for better commit messages
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -38,7 +43,9 @@ jobs:
             python database/init_db.py
           fi
 
-      - name: Run tests
+      - name: Run evaluation tests
+        id: run_tests
+        continue-on-error: true  # Allow the workflow to continue even if tests fail
         env:
           API_BASE_URL: ${{ inputs.api_base_url }}
           API_KEY: ${{ inputs.api_key }}
@@ -47,13 +54,47 @@ jobs:
         run: |
           pytest tests/ -v
 
+      - name: Check evaluation metrics
+        id: check_metrics
+        run: |
+          if [ -f "test_metrics.json" ]; then
+            coverage_rate=$(jq -r '.metrics.coverage_rate' test_metrics.json)
+            status=$(jq -r '.status' test_metrics.json)
+            echo "Coverage Rate: $coverage_rate%"
+            echo "Status: $status"
+            
+            if (( $(echo "$coverage_rate < ${{ inputs.minimum_coverage }}" | bc -l) )); then
+              echo "::warning::Coverage rate ($coverage_rate%) is below minimum threshold (${{ inputs.minimum_coverage }}%)"
+              # Don't fail the build, just warn
+            fi
+            
+            # Export metrics for summary
+            echo "coverage_rate=$coverage_rate" >> $GITHUB_ENV
+            echo "status=$status" >> $GITHUB_ENV
+          else
+            echo "::error::No metrics file found"
+            exit 1
+          fi
+
       - name: Generate Datasette visualization
         run: |
           datasette inspect database/llm_evaluation.db --inspect-file database/inspection.json
-          
+
       - name: Commit and push changes
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add database/llm_evaluation.db database/inspection.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Update test results database and inspection data [skip ci]" && git push)
+          git add database/llm_evaluation.db database/inspection.json test_metrics.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update test results [Coverage: ${coverage_rate}%, Status: ${status}] [skip ci]" && git push)
+
+      - name: Generate evaluation summary
+        run: |
+          echo "## Evaluation Results for ${{ inputs.model_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "* Coverage Rate: ${{ env.coverage_rate }}%" >> $GITHUB_STEP_SUMMARY
+          echo "* Status: ${{ env.status }}" >> $GITHUB_STEP_SUMMARY
+          if [ -f "test_metrics.json" ]; then
+            echo "### Detailed Metrics" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat test_metrics.json >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
