@@ -180,3 +180,4 @@ cython_debug/
 .coverage
 htmlcov/
 .DS_Store
+!database/llm_evaluation.db

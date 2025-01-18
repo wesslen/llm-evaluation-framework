@@ -85,8 +85,16 @@ jobs:
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add database/llm_evaluation.db database/inspection.json test_metrics.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Update test results [Coverage: ${{ steps.process_results.outputs.coverage_rate }}%, Status: ${{ steps.process_results.outputs.status }}] [skip ci]" && git push)
+          # Force add the database file and other files
+          git add -f database/llm_evaluation.db
+          git add database/inspection.json test_metrics.json
+          # Check if there are changes to commit
+          if ! git diff --staged --quiet; then
+            git commit -m "Update test results [Coverage: ${{ steps.process_results.outputs.coverage_rate }}%, Status: ${{ steps.process_results.outputs.status }}] [skip ci]"
+            git push
+          else
+            echo "No changes to commit"
+          fi
 
       - name: Generate evaluation summary
         if: always()
