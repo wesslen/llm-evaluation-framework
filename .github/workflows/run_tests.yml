@@ -41,15 +41,30 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Initialize database if not exists
+      - name: Initialize database
         run: |
+          # Create database directory if it doesn't exist (shouldn't be needed as init_db.py handles this)
+          mkdir -p database/migrations
+          
+          # Check if database exists
           if [ ! -f "database/llm_evaluation.db" ]; then
-            echo "Creating new database..."
+            echo "Initializing new database..."
             python database/init_db.py
           else
-            echo "Database exists, checking schema..."
-            sqlite3 database/llm_evaluation.db ".tables"
+            echo "Database exists, running initialization to ensure schema is up to date..."
+            # Don't drop tables, just ensure schema is current
+            python database/init_db.py
           fi
+          
+          # Verify database structure
+          echo "Verifying database structure..."
+          sqlite3 database/llm_evaluation.db << EOF
+          .mode column
+          .headers on
+          SELECT name, sql FROM sqlite_master 
+          WHERE type='table' AND name NOT LIKE 'sqlite_%'
+          ORDER BY name;
+          EOF
 
       - name: Run evaluation tests
         id: run_tests
