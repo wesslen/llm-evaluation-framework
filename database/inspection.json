@@ -1,7 +1,7 @@
 {
   "llm_evaluation": {
-    "hash": "59e9e7e4e277e3110c063883e017813562e2a919cf836b978c07c7feb93933a2",
-    "size": 61440,
+    "hash": "26d8a09f59071cfdfa2d61a547c06949723a5ddd2027bda624dd8c78d34b461d",
+    "size": 86016,
     "file": "database/llm_evaluation.db",
     "tables": {
       "model_registry": {
@@ -14,6 +14,12 @@
         "count": 0
       },
       "unit_test_runs": {
+        "count": 0
+      },
+      "evaluation_runs": {
+        "count": 0
+      },
+      "test_results": {
         "count": 0
       }
     }
