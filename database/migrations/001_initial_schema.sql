@@ -14,6 +14,26 @@ CREATE TABLE model_registry (
     UNIQUE(model_name, model_version)
 );
 
+-- Evaluation Runs
+CREATE TABLE evaluation_runs (
+    run_id VARCHAR(36) PRIMARY KEY,
+    model_id VARCHAR(36) REFERENCES model_registry(model_id),
+    run_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    run_status VARCHAR(50) NOT NULL,
+    run_metadata TEXT  -- JSON stored as TEXT in SQLite
+);
+
+-- Test Results
+CREATE TABLE test_results (
+    result_id VARCHAR(36) PRIMARY KEY,
+    run_id VARCHAR(36) REFERENCES evaluation_runs(run_id),
+    test_name VARCHAR(255) NOT NULL,
+    result_value TEXT NOT NULL,  -- JSON stored as TEXT in SQLite
+    pass_fail BOOLEAN,
+    execution_time REAL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Unit Test Suites
 CREATE TABLE unit_test_suites (
     suite_id VARCHAR(36) PRIMARY KEY,
@@ -58,5 +78,7 @@ CREATE TABLE unit_test_runs (
 
 -- Create indexes for better query performance
 CREATE INDEX idx_model_registry_provider ON model_registry(provider_type, provider_name);
+CREATE INDEX idx_evaluation_runs_timestamp ON evaluation_runs(run_timestamp);
+CREATE INDEX idx_test_results_runid ON test_results(run_id);
 CREATE INDEX idx_unit_test_runs_status ON unit_test_runs(status);
 CREATE INDEX idx_unit_test_runs_timestamp ON unit_test_runs(run_timestamp);
