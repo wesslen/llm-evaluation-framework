@@ -112,14 +112,17 @@ jobs:
             echo "metrics_exist=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Generate Datasette visualization
+      - name: Generate Datasette inspection
         if: steps.process_results.outputs.metrics_exist == 'true'
         run: |
           echo "Generating Datasette inspection..."
           datasette inspect database/llm_evaluation.db --inspect-file database/inspection.json
           
-          echo "Database content summary:"
-          datasette database/llm_evaluation.db --get /llm_evaluation.json?_shape=array
+          echo "Database content summary from tables:"
+          for table in model_registry evaluation_runs test_results unit_test_suites unit_tests unit_test_runs; do
+            echo "Table: $table"
+            sqlite3 database/llm_evaluation.db "SELECT COUNT(*) as count FROM $table;"
+          done
 
       - name: Verify database before commit
         if: steps.process_results.outputs.metrics_exist == 'true'
