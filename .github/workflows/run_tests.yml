@@ -179,23 +179,16 @@ jobs:
       - name: Generate evaluation summary
         if: always()
         run: |
+          DB_SUMMARY=$(sqlite3 database/llm_evaluation.db "SELECT COUNT(DISTINCT mr.model_id) as total_models, COUNT(DISTINCT er.run_id) as total_runs, COUNT(tr.result_id) as total_results FROM model_registry mr LEFT JOIN evaluation_runs er ON mr.model_id = er.model_id LEFT JOIN test_results tr ON er.run_id = tr.run_id;")
+          
           echo "## Evaluation Results for ${{ inputs.model_name }}" >> $GITHUB_STEP_SUMMARY
           if [ -f "test_metrics.json" ]; then
             echo "* Coverage Rate: ${{ steps.process_results.outputs.coverage_rate }}%" >> $GITHUB_STEP_SUMMARY
             echo "* Status: ${{ steps.process_results.outputs.status }}" >> $GITHUB_STEP_SUMMARY
             
             echo "### Database Summary" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`sql" >> $GITHUB_STEP_SUMMARY
-            sqlite3 database/llm_evaluation.db << EOF >> $GITHUB_STEP_SUMMARY
-            .mode markdown
-            SELECT 
-              COUNT(DISTINCT mr.model_id) as total_models,
-              COUNT(DISTINCT er.run_id) as total_runs,
-              COUNT(tr.result_id) as total_results
-            FROM model_registry mr
-            LEFT JOIN evaluation_runs er ON mr.model_id = er.model_id
-            LEFT JOIN test_results tr ON er.run_id = tr.run_id;
-            EOF
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "$DB_SUMMARY" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
             
             echo "### Detailed Metrics" >> $GITHUB_STEP_SUMMARY
