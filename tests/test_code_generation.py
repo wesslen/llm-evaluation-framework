@@ -36,7 +36,7 @@ def extract_code_block(text: str) -> str:
 @pytest.mark.asyncio
 async def test_function_implementation(llm_client, db_session):
     """Test implementation of basic functions."""
-    client = await llm_client
+    client = llm_client  # Removed await
     
     test_cases = [
         {
@@ -85,7 +85,7 @@ async def test_function_implementation(llm_client, db_session):
 @pytest.mark.asyncio
 async def test_algorithm_solutions(llm_client, db_session):
     """Test implementation of common algorithms."""
-    client = await llm_client
+    client = llm_client  # Removed await
     
     algorithms = [
         {
@@ -141,7 +141,7 @@ async def test_algorithm_solutions(llm_client, db_session):
 @pytest.mark.asyncio
 async def test_code_refactoring(llm_client, db_session):
     """Test code refactoring capabilities."""
-    client = await llm_client
+    client = llm_client  # Removed await
     
     original_code = """
     def process_data(data):
@@ -202,7 +202,7 @@ async def test_code_refactoring(llm_client, db_session):
 @pytest.mark.asyncio
 async def test_error_handling(llm_client, db_session):
     """Test generation of code with proper error handling."""
-    client = await llm_client
+    client = llm_client  # Removed await
     
     prompt = """
     Write a Python function that reads a JSON file and extracts specific fields. 

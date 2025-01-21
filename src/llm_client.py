@@ -14,7 +14,7 @@ class LLMClient:
         """Initialize the LLM client with configuration."""
         self.base_url = str(settings.api_base_url)
         self.api_key = settings.api_key.get_secret_value()
-        self.model_name = settings.llm_model_name
+        self.model_name = settings.model_name  # Changed from llm_model_name
         
     @retry(
         stop=stop_after_attempt(settings.max_retries),

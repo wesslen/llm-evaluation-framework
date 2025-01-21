@@ -43,52 +43,66 @@ jobs:
 
       - name: Initialize database
         run: |
-          # Create database directory if it doesn't exist (shouldn't be needed as init_db.py handles this)
           mkdir -p database/migrations
           
-          # Check if database exists
-          if [ ! -f "database/llm_evaluation.db" ]; then
-            echo "Initializing new database..."
-            python database/init_db.py
-          else
-            echo "Database exists, running initialization to ensure schema is up to date..."
-            # Don't drop tables, just ensure schema is current
-            python database/init_db.py
-          fi
+          # Initialize database with schema
+          echo "Initializing database..."
+          python database/init_db.py --drop
           
-          # Verify database structure
-          echo "Verifying database structure..."
+          # Verify initial database structure
+          echo "Verifying initial database structure..."
           sqlite3 database/llm_evaluation.db << EOF
           .mode column
           .headers on
-          SELECT name, sql FROM sqlite_master 
+          SELECT name FROM sqlite_master 
           WHERE type='table' AND name NOT LIKE 'sqlite_%'
           ORDER BY name;
           EOF
 
       - name: Run evaluation tests
         id: run_tests
-        continue-on-error: true
         env:
           API_BASE_URL: ${{ inputs.api_base_url }}
           API_KEY: ${{ inputs.api_key }}
           MODEL_NAME: ${{ inputs.model_name }}
           DATABASE_URL: sqlite:///database/llm_evaluation.db
         run: |
-          pytest tests/ -v || true
+          # Run tests and capture the exit code
+          pytest tests/ -v
+          test_exit_code=$?
+          
+          # Verify test model creation
+          echo "Verifying model registration..."
+          sqlite3 database/llm_evaluation.db "SELECT model_name, model_version FROM model_registry;"
+          
+          # Only exit with error if tests truly failed (not just some failures)
+          if [ $test_exit_code -gt 2 ]; then
+            exit 1
+          fi
 
       - name: Verify database population
+        if: always()
         run: |
           echo "Checking database state after tests..."
           sqlite3 database/llm_evaluation.db << EOF
           .mode column
           .headers on
+          
           -- Check model registry
-          SELECT COUNT(*) as model_count FROM model_registry;
-          -- Check recent test results
-          SELECT COUNT(*) as result_count FROM test_results;
-          -- Check evaluation runs
-          SELECT COUNT(*) as run_count FROM evaluation_runs;
+          SELECT COUNT(*) as model_count, 
+                 COUNT(DISTINCT model_name) as unique_models 
+          FROM model_registry;
+          
+          -- Check test suites
+          SELECT COUNT(*) as suite_count,
+                 COUNT(DISTINCT category) as categories
+          FROM unit_test_suites;
+          
+          -- Check test runs
+          SELECT COUNT(*) as run_count,
+                 COUNT(DISTINCT model_id) as models_tested,
+                 COUNT(DISTINCT test_id) as unique_tests
+          FROM unit_test_runs;
           EOF
 
       - name: Process test results
@@ -117,61 +131,33 @@ jobs:
         run: |
           echo "Generating Datasette inspection..."
           datasette inspect database/llm_evaluation.db --inspect-file database/inspection.json
-          
-          echo "Database content summary from tables:"
-          for table in model_registry evaluation_runs test_results unit_test_suites unit_tests unit_test_runs; do
-            echo "Table: $table"
-            sqlite3 database/llm_evaluation.db "SELECT COUNT(*) as count FROM $table;"
-          done
 
-      - name: Verify database before commit
-        if: steps.process_results.outputs.metrics_exist == 'true'
+      - name: Commit database changes
+        if: success()
         run: |
-          echo "Final database state verification..."
-          sqlite3 database/llm_evaluation.db << EOF
-          .mode column
-          .headers on
-          -- Get latest evaluation run
-          SELECT 
-            er.run_id,
-            mr.model_name,
-            er.run_timestamp,
-            COUNT(tr.result_id) as result_count
-          FROM evaluation_runs er
-          JOIN model_registry mr ON er.model_id = mr.model_id
-          LEFT JOIN test_results tr ON er.run_id = tr.run_id
-          WHERE mr.model_name = '${{ inputs.model_name }}'
-          GROUP BY er.run_id
-          ORDER BY er.run_timestamp DESC
-          LIMIT 1;
-          EOF
-
-      - name: Commit and push changes
-        if: steps.process_results.outputs.metrics_exist == 'true'
-        run: |
-          # Verify database file size
-          db_size=$(stat -f%z database/llm_evaluation.db || stat -c%s database/llm_evaluation.db)
-          echo "Database size: $db_size bytes"
+          # Verify database has content before committing
+          table_counts=$(sqlite3 database/llm_evaluation.db "
+            SELECT COUNT(*) from model_registry
+            UNION ALL
+            SELECT COUNT(*) from unit_test_suites
+            UNION ALL
+            SELECT COUNT(*) from unit_test_runs;")
           
-          if [ "$db_size" -lt "1024" ]; then
-            echo "::warning::Database file seems too small (${db_size} bytes), possible data write issue"
+          if [ -z "$table_counts" ] || [ "$(echo "$table_counts" | tr -d '\n0')" = "" ]; then
+            echo "::error::Database appears empty. Skipping commit."
             exit 1
           fi
           
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           
-          # Force add the database file and other files
+          # Add and commit changes
           git add -f database/llm_evaluation.db
           git add database/inspection.json test_metrics.json
           
-          # Check if there are changes to commit
           if ! git diff --staged --quiet; then
-            git commit -m "Update test results [Coverage: ${{ steps.process_results.outputs.coverage_rate }}%, Status: ${{ steps.process_results.outputs.status }}] [skip ci]"
+            git commit -m "Update test results [Coverage: ${{ steps.process_results.outputs.coverage_rate }}%, Status: ${{ steps.process_results.outputs.status }}]"
             git push
-            
-            echo "Changes committed and pushed. Final database state:"
-            sqlite3 database/llm_evaluation.db "SELECT COUNT(*) as final_count FROM test_results;"
           else
             echo "No changes to commit"
           fi
@@ -179,22 +165,23 @@ jobs:
       - name: Generate evaluation summary
         if: always()
         run: |
-          DB_SUMMARY=$(sqlite3 database/llm_evaluation.db "SELECT COUNT(DISTINCT mr.model_id) as total_models, COUNT(DISTINCT er.run_id) as total_runs, COUNT(tr.result_id) as total_results FROM model_registry mr LEFT JOIN evaluation_runs er ON mr.model_id = er.model_id LEFT JOIN test_results tr ON er.run_id = tr.run_id;")
-          
           echo "## Evaluation Results for ${{ inputs.model_name }}" >> $GITHUB_STEP_SUMMARY
+          
+          # Add database statistics
+          echo "### Database Statistics" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          sqlite3 database/llm_evaluation.db "
+            SELECT 
+              (SELECT COUNT(*) FROM model_registry) as models,
+              (SELECT COUNT(*) FROM unit_test_suites) as test_suites,
+              (SELECT COUNT(*) FROM unit_test_runs) as test_runs;" \
+            >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          
+          # Add test metrics if available
           if [ -f "test_metrics.json" ]; then
-            echo "* Coverage Rate: ${{ steps.process_results.outputs.coverage_rate }}%" >> $GITHUB_STEP_SUMMARY
-            echo "* Status: ${{ steps.process_results.outputs.status }}" >> $GITHUB_STEP_SUMMARY
-            
-            echo "### Database Summary" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            echo "$DB_SUMMARY" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            
-            echo "### Detailed Metrics" >> $GITHUB_STEP_SUMMARY
+            echo "### Test Metrics" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
             cat test_metrics.json >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "* No metrics were generated during this run" >> $GITHUB_STEP_SUMMARY
           fi

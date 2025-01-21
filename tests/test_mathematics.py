@@ -10,7 +10,7 @@ from src.database import get_session, UnitTestSuite, UnitTest
 @pytest.mark.asyncio
 async def test_arithmetic_operations(llm_client, db_session, make_test_suite):
     """Test basic arithmetic operations."""
-    client = await llm_client
+    client = llm_client  # Removed await
     
     suite = make_test_suite(
         name_prefix="arithmetic",
@@ -55,7 +55,7 @@ async def test_arithmetic_operations(llm_client, db_session, make_test_suite):
 @pytest.mark.asyncio
 async def test_word_problems(llm_client, db_session, make_test_suite):
     """Test solving mathematical word problems."""
-    client = await llm_client
+    client = llm_client  # Removed await
     suite = make_test_suite(
         name_prefix="word_problems",
         description="Tests for mathematical word problems",
@@ -98,7 +98,7 @@ async def test_word_problems(llm_client, db_session, make_test_suite):
 @pytest.mark.asyncio
 async def test_basic_algebra(llm_client, db_session, make_test_suite):
     """Test basic algebraic equation solving."""
-    client = await llm_client
+    client = llm_client  # Removed await
     suite = make_test_suite(
         name_prefix="algebra",
         description="Tests for basic algebra",
@@ -142,7 +142,7 @@ async def test_basic_algebra(llm_client, db_session, make_test_suite):
 @pytest.mark.asyncio
 async def test_mathematical_reasoning(llm_client, db_session, make_test_suite):
     """Test mathematical reasoning and logic."""
-    client = await llm_client
+    client = llm_client  # Removed await
     suite = make_test_suite(
         name_prefix="math_reasoning",
         description="Tests for mathematical reasoning",

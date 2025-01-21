@@ -86,21 +86,22 @@ def pytest_sessionfinish(session, exitstatus):
 def db_session():
     """Create a database session for testing."""
     session = get_session()
-    yield session
-    session.close()
+    try:
+        yield session
+    finally:
+        session.close()
 
 @pytest.fixture
-async def llm_client():
+def llm_client():
     """Create an LLM client instance."""
-    client = LLMClient()
-    return client
+    return LLMClient()
 
 @pytest.fixture
-async def test_model(db_session):
+def test_model(db_session):
     """Create a test model in the registry."""
     model = ModelRegistry(
         model_id=uuid.uuid4(),
-        model_name=settings.llm_model_name,
+        model_name=settings.model_name,
         model_version="1.0.0",
         provider_type="off_prem_api",
         provider_name="TestProvider",
@@ -110,7 +111,10 @@ async def test_model(db_session):
     )
     db_session.add(model)
     db_session.commit()
-    return model
+    
+    yield model
+    
+    # Don't clean up the model - we want to keep it in the database
 
 @pytest.fixture
 def make_test_suite(db_session):
@@ -132,10 +136,7 @@ def make_test_suite(db_session):
     
     yield _make_suite
     
-    # Cleanup
-    for suite in created_suites:
-        db_session.delete(suite)
-    db_session.commit()
+    # Don't clean up test suites - we want to keep them
 
 @pytest.fixture
 def sample_texts():
@@ -167,11 +168,3 @@ def test_prompts():
         "extract": "Please extract the key facts from this text in bullet points:",
         "compare": "Please compare and contrast the following two texts:"
     }
-
-@pytest.fixture(autouse=True)
-async def cleanup_db(db_session):
-    """Clean up the database after tests."""
-    yield
-    for table in reversed(ModelRegistry.metadata.sorted_tables):
-        db_session.execute(table.delete())
-    db_session.commit()

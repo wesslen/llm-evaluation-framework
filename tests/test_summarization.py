@@ -10,8 +10,7 @@ from src.database import get_session, ModelRegistry, UnitTestSuite, UnitTest
 @pytest.mark.asyncio
 async def test_article_summarization(llm_client, db_session, make_test_suite):
     """Test article summarization capabilities."""
-    # Need to await our async fixture
-    client = await llm_client
+    client = llm_client  # Removed await
     
     # Create a uniquely named test suite
     suite = make_test_suite(

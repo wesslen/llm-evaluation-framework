@@ -9,7 +9,7 @@ from src.database import get_session, UnitTestSuite, UnitTest
 @pytest.mark.asyncio
 async def test_logical_deduction(llm_client, db_session, make_test_suite):
     """Test logical deduction capabilities."""
-    client = await llm_client
+    client = llm_client  # Removed await
     
     suite = make_test_suite(
         name_prefix="logical_deduction",
@@ -71,7 +71,7 @@ async def test_logical_deduction(llm_client, db_session, make_test_suite):
 @pytest.mark.asyncio
 async def test_cause_effect_analysis(llm_client, db_session, make_test_suite):
     """Test cause and effect analysis."""
-    client = await llm_client
+    client = llm_client  # Removed await
     
     suite = make_test_suite(
         name_prefix="cause_effect",
@@ -129,7 +129,7 @@ async def test_cause_effect_analysis(llm_client, db_session, make_test_suite):
 @pytest.mark.asyncio
 async def test_analogical_reasoning(llm_client, db_session, make_test_suite):
     """Test analogical reasoning capabilities."""
-    client = await llm_client
+    client = llm_client  # Removed await
     
     suite = make_test_suite(
         name_prefix="analogical",

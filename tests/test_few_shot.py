@@ -10,7 +10,7 @@ from src.database import get_session, UnitTestSuite
 @pytest.mark.asyncio
 async def test_sentiment_analysis(llm_client, db_session):
     """Test sentiment analysis with few-shot examples."""
-    client = await llm_client
+    client = llm_client  # Removed await
     
     examples = [
         {"text": "This product exceeded my expectations!", "sentiment": "positive"},
@@ -53,7 +53,7 @@ async def test_sentiment_analysis(llm_client, db_session):
 @pytest.mark.asyncio
 async def test_topic_classification(llm_client, db_session):
     """Test topic classification with few-shot examples."""
-    client = await llm_client
+    client = llm_client  # Removed await
     
     examples = [
         {
@@ -106,7 +106,7 @@ async def test_topic_classification(llm_client, db_session):
 @pytest.mark.asyncio
 async def test_intent_classification(llm_client, db_session):
     """Test user intent classification with few-shot examples."""
-    client = await llm_client
+    client = llm_client  # Removed await
     
     examples = [
         {
@@ -159,7 +159,7 @@ async def test_intent_classification(llm_client, db_session):
 @pytest.mark.asyncio
 async def test_entity_extraction(llm_client, db_session):
     """Test named entity extraction with few-shot examples."""
-    client = await llm_client
+    client = llm_client  # Removed await
     
     examples = [
         {
