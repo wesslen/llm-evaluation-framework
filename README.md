@@ -2,6 +2,8 @@
 
 A comprehensive framework for evaluating Large Language Models (LLMs) through automated testing and result tracking.
 
+View the [database](https://lite.datasette.io/?url=https://github.com/wesslen/llm-evaluation-framework/blob/main/database/llm_evaluation.db) with `datasette-lite`.
+
 ## Repository Structure
 ```
 llm-evaluation-framework/
