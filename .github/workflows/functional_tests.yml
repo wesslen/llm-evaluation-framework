@@ -1,6 +1,17 @@
 name: Functional Tests
 on: 
   workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: 'API Base URL'
+        required: true
+      api_key:
+        description: 'API Key'
+        required: true
+        type: secret
+      model_name:
+        description: 'Model Name'
+        required: true
   push:
     branches: [ main ]
     paths:
@@ -40,6 +51,15 @@ jobs:
           python database/init_db.py
           
       - name: Run functional tests
+        env:
+          API_BASE_URL: ${{ inputs.api_base_url }}
+          API_KEY: ${{ inputs.api_key }}
+          MODEL_NAME: ${{ inputs.model_name }}
+          DATABASE_URL: sqlite:///database/llm_evaluation.db
+          PROVIDER_TYPE: off_prem_api
+          PROVIDER_NAME: TestProvider
+          MODEL_TYPE: text-generation
+          MODEL_ARCHITECTURE: transformer
         run: |
           # Run only functional unit tests
           pytest -v \
@@ -51,12 +71,6 @@ jobs:
             tests/test_schema_state.py \
             tests/test_simple.py \
             --junitxml=test-results/functional-tests.xml
-        env:
-          MODEL_NAME: test-model
-          PROVIDER_TYPE: off_prem_api
-          PROVIDER_NAME: TestProvider
-          MODEL_TYPE: text-generation
-          MODEL_ARCHITECTURE: transformer
           
       - name: Upload test results
         if: always()
